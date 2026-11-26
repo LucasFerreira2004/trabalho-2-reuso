@@ -1,5 +1,6 @@
 package com.reusable.notificator.service.notification;
 
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -41,6 +42,10 @@ class NotificationService {
 			throw failure;
 		}
 		return new Acceptance(id, Status.PENDING);
+	}
+
+	Optional<Notification> find(UUID id) {
+		return repository.findById(id);
 	}
 
 	private void validate(SubmitNotificationRequest request) {
