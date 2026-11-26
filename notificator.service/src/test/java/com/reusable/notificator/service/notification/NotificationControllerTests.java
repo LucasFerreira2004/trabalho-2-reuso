@@ -24,7 +24,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 
 @EnabledIfEnvironmentVariable(named = "RUN_POSTGRES_TESTS", matches = "true")
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-		properties = "spring.rabbitmq.listener.simple.auto-startup=false")
+		properties = {"spring.rabbitmq.listener.simple.auto-startup=false", "notification.telegram.bot-token="})
 class NotificationControllerTests {
 
 	private static final String EMAIL_REQUEST = """
@@ -90,6 +90,15 @@ class NotificationControllerTests {
 		assertThat(response.statusCode()).isEqualTo(503);
 		assertThat(response.body()).doesNotContain("Internal publisher detail");
 		assertThat(repository.findById(createdIds.element()).orElseThrow().getStatus()).isEqualTo(Status.FAILED);
+	}
+
+	@Test
+	void unconfiguredTelegramDoesNotPublish() throws Exception {
+		var response = post("""
+				{"source":"integration-test","channel":"TELEGRAM","recipient":"-1234","message":"Test"}
+				""");
+		assertThat(response.statusCode()).isEqualTo(503);
+		verifyNoInteractions(publisher);
 	}
 
 	@Test

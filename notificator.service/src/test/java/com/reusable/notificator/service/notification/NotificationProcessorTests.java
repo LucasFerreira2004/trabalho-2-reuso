@@ -31,6 +31,7 @@ class NotificationProcessorTests {
 	@BeforeEach
 	void setUp() {
 		when(sender.channel()).thenReturn(Channel.EMAIL);
+		when(sender.isAvailable()).thenReturn(true);
 		processor = new PersistedNotificationProcessor(repository, new NotificationSenderRegistry(List.of(sender)));
 	}
 

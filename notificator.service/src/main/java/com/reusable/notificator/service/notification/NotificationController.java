@@ -63,6 +63,11 @@ class NotificationController {
 		return ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE, "Notification could not be queued.");
 	}
 
+	@ExceptionHandler(NotificationService.ChannelUnavailable.class)
+	ProblemDetail channelUnavailable(NotificationService.ChannelUnavailable failure) {
+		return ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE, failure.getMessage());
+	}
+
 	record NotificationDetails(UUID id, String source, Channel channel, Status status, int attempts,
 			Instant createdAt, Instant sentAt, String errorMessage) {
 

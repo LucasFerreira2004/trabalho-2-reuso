@@ -27,7 +27,7 @@ class PersistedNotificationProcessor implements NotificationProcessor {
 			}
 			var notification = repository.findById(id).orElseThrow();
 			var sender = registry.find(notification.getChannel());
-			if (sender.isEmpty()) {
+			if (sender.isEmpty() || !sender.get().isAvailable()) {
 				return fail(id, "No sender is available for this channel.");
 			}
 			try {

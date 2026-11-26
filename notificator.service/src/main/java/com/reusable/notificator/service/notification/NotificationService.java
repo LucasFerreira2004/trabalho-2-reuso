@@ -18,17 +18,24 @@ class NotificationService {
 	private final NotificationRepository repository;
 	private final ObjectProvider<NotificationPublisher> publishers;
 	private final Validator validator;
+	private final NotificationSenderRegistry registry;
 
 	NotificationService(NotificationRepository repository, ObjectProvider<NotificationPublisher> publishers,
-			Validator validator) {
+			Validator validator, NotificationSenderRegistry registry) {
 		this.repository = repository;
 		this.publishers = publishers;
 		this.validator = validator;
+		this.registry = registry;
 	}
 
 	@Transactional(propagation = Propagation.NOT_SUPPORTED)
 	public Acceptance submit(SubmitNotificationRequest request) {
 		validate(request);
+		var sender = registry.find(request.channel())
+				.orElseThrow(() -> new InvalidRequest("This channel has no registered sender."));
+		if (!sender.isAvailable()) {
+			throw new ChannelUnavailable(request.channel());
+		}
 		// The repository commits the insert before the publisher can see the ID.
 		var id = repository.save(new Notification(request.source(), request.channel(), request.content())).getId();
 		try {
@@ -94,6 +101,12 @@ class NotificationService {
 	static final class InvalidRequest extends RuntimeException {
 		InvalidRequest(String message) {
 			super(message);
+		}
+	}
+
+	static final class ChannelUnavailable extends RuntimeException {
+		ChannelUnavailable(Channel channel) {
+			super(channel + " is currently unavailable.");
 		}
 	}
 }

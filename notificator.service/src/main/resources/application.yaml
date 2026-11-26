@@ -38,3 +38,7 @@ spring:
 notification:
   queue: ${NOTIFICATION_QUEUE:notifications.email}
   from: ${NOTIFICATION_FROM:notifications@example.com}
+  telegram:
+    bot-token: ${TELEGRAM_BOT_TOKEN:}
+    api-url: ${TELEGRAM_API_URL:https://api.telegram.org}
+    timeout-ms: ${TELEGRAM_TIMEOUT_MS:5000}
