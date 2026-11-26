@@ -310,7 +310,7 @@ Verificado com PostgreSQL 17 pelo Compose. O Spring Boot conectou com o listener
 
 ### Etapa 05 — Modelar persistência
 
-- [ ] Modelar persistência
+- [x] Modelar persistência
 
 **Responsável:** Kauan  
 **Dependências:** 03, 04  
@@ -321,7 +321,7 @@ Verificado com PostgreSQL 17 pelo Compose. O Spring Boot conectou com o listener
 
 ### Etapa 06 — Implementar solicitação
 
-- [ ] Implementar solicitação
+- [x] Implementar solicitação
 
 **Responsável:** Kauan  
 **Dependências:** 05  
@@ -332,7 +332,7 @@ Verificado com PostgreSQL 17 pelo Compose. O Spring Boot conectou com o listener
 
 ### Etapa 07 — Expor API
 
-- [ ] Expor API
+- [x] Expor API
 
 **Responsável:** Kauan  
 **Dependências:** 06  
@@ -343,7 +343,7 @@ Verificado com PostgreSQL 17 pelo Compose. O Spring Boot conectou com o listener
 
 ### Etapa 08 — Selecionar estratégias
 
-- [ ] Selecionar estratégias
+- [x] Selecionar estratégias
 
 **Responsável:** Kauan  
 **Dependências:** 03, 05  
@@ -354,7 +354,7 @@ Verificado com PostgreSQL 17 pelo Compose. O Spring Boot conectou com o listener
 
 ### Etapa 09 — Implementar processador
 
-- [ ] Implementar processador
+- [x] Implementar processador
 
 **Responsável:** Kauan  
 **Dependências:** 08  
@@ -366,7 +366,7 @@ Verificado com PostgreSQL 17 pelo Compose. O Spring Boot conectou com o listener
 ### Etapa 10 — Adaptar o sender de e-mail
 
 - [x] Implementar o sender SMTP e os testes do fluxo original (Lucas, `7c83d0d`)
-- [ ] Integrar o sender ao núcleo e verificar SMTP (Kauan)
+- [x] Integrar o sender ao núcleo e verificar SMTP (Kauan)
 
 **Responsável:** Kauan  
 **Dependências:** 08  
@@ -377,18 +377,20 @@ Verificado com PostgreSQL 17 pelo Compose. O Spring Boot conectou com o listener
 
 ### Etapa 11 — Implementar Telegram
 
-- [ ] Implementar Telegram
+- [x] Implementar Telegram e validar com respostas HTTP simuladas
+- [ ] Configurar bot e confirmar recebimento em um chat real
 
 **Responsável:** Kauan  
 **Dependências:** 08  
-**Implementação:** Preparar o bot e o chat de teste no início do dia. Integrar a Bot API via RestClient, com token e timeout configurados pelo ambiente.  
+**Implementação:** Integrar a Bot API via RestClient, com token e timeout configurados pelo ambiente. Configurar o bot e o chat quando estiverem disponíveis para o teste real.
+
 **Critério de conclusão:** O processador seleciona TELEGRAM e a mensagem chega ao chat de teste.  
 **Contribuição:** Segundo Adapter e demonstração de variabilidade.  
 **Commit sugerido:** `feat: integrate telegram sender`
 
 ### Etapa 12 — Adicionar Retry
 
-- [ ] Adicionar Retry
+- [x] Adicionar Retry
 
 **Responsável:** Kauan  
 **Dependências:** 09, 10, 11  
@@ -399,7 +401,10 @@ Verificado com PostgreSQL 17 pelo Compose. O Spring Boot conectou com o listener
 
 ### Etapa 13 — Entregar núcleo a Lucas
 
-- [ ] Entregar núcleo a Lucas
+- [x] Preparar a entrega do núcleo e o roteiro de verificação
+- [ ] Registrar a evidência de recebimento no Telegram real (etapa 11)
+
+Os 30 testes passaram com PostgreSQL real. O [roteiro de verificação](../notificator.service/README.md#verify-the-core-api-and-email) usou o perfil local `core-demo` e confirmou EMAIL em SENT com uma tentativa no Mailpit. Com o Telegram simulado, uma falha transitória terminou em SENT após três tentativas e uma rejeição definitiva terminou em FAILED após uma tentativa. O RabbitMQ entra na integração da etapa 17.
 
 **Responsável:** Kauan  
 **Dependências:** 07, 09, 10, 11, 12  
