@@ -1,4 +1,4 @@
-package com.reusable.notificator.service;
+package com.reusable.notificator.service.notification;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Properties;
@@ -17,7 +17,11 @@ import org.springframework.amqp.rabbit.listener.AbstractMessageListenerContainer
 import org.springframework.amqp.rabbit.listener.RabbitListenerEndpointRegistry;
 import org.springframework.amqp.rabbit.listener.api.ChannelAwareMessageListener;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
+import org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Import;
 import org.springframework.mail.MailSendException;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -30,12 +34,18 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-@SpringBootTest(properties = {
-		"spring.autoconfigure.exclude=org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration",
+@SpringBootTest(classes = EmailNotificationListenerTests.MailTestConfiguration.class,
+		webEnvironment = SpringBootTest.WebEnvironment.NONE, properties = {
 		"spring.rabbitmq.listener.simple.auto-startup=false",
 		"notification.from=notifications@example.com"
 })
-class ApplicationTests {
+class EmailNotificationListenerTests {
+
+	@Configuration(proxyBeanMethods = false)
+	@EnableAutoConfiguration(exclude = DataSourceAutoConfiguration.class)
+	@Import({EmailNotificationListener.class, EmailNotificationSender.class, NotificationQueueConfiguration.class})
+	static class MailTestConfiguration {
+	}
 
 	@Autowired
 	private RabbitListenerEndpointRegistry listenerRegistry;
