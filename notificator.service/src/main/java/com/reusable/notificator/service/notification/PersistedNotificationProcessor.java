@@ -3,6 +3,7 @@ package com.reusable.notificator.service.notification;
 import java.time.Instant;
 import java.util.UUID;
 
+import io.github.resilience4j.retry.Retry;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -12,10 +13,12 @@ class PersistedNotificationProcessor implements NotificationProcessor {
 
 	private final NotificationRepository repository;
 	private final NotificationSenderRegistry registry;
+	private final Retry retry;
 
-	PersistedNotificationProcessor(NotificationRepository repository, NotificationSenderRegistry registry) {
+	PersistedNotificationProcessor(NotificationRepository repository, NotificationSenderRegistry registry, Retry retry) {
 		this.repository = repository;
 		this.registry = registry;
+		this.retry = retry;
 	}
 
 	@Override
@@ -31,7 +34,8 @@ class PersistedNotificationProcessor implements NotificationProcessor {
 				return fail(id, "No sender is available for this channel.");
 			}
 			try {
-				deliver(id, sender.get(), notification.getContent());
+				var content = notification.getContent();
+				retry.executeRunnable(() -> deliver(id, sender.get(), content));
 			} catch (NotificationDeliveryException failure) {
 				return fail(id, failure.getMessage());
 			}

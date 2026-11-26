@@ -1,5 +1,6 @@
 package com.reusable.notificator.service.notification;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -16,6 +17,7 @@ import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -32,7 +34,8 @@ class NotificationProcessorTests {
 	void setUp() {
 		when(sender.channel()).thenReturn(Channel.EMAIL);
 		when(sender.isAvailable()).thenReturn(true);
-		processor = new PersistedNotificationProcessor(repository, new NotificationSenderRegistry(List.of(sender)));
+		processor = new PersistedNotificationProcessor(repository, new NotificationSenderRegistry(List.of(sender)),
+				new NotificationRetryConfiguration().notificationRetry());
 	}
 
 	@Test
@@ -53,6 +56,43 @@ class NotificationProcessorTests {
 
 		assertThat(processor.process(id)).isEqualTo(ProcessingResult.FAILED);
 		verify(repository).recordAttempt(id);
+		verify(sender).send(content);
+	}
+
+	@Test
+	void persistsEachAttemptAndSucceedsOnTheThirdCall() {
+		prepareClaim();
+		doThrow(new NotificationDeliveryException("Temporary error.", true))
+				.doThrow(new NotificationDeliveryException("Temporary error.", true))
+				.doNothing().when(sender).send(content);
+		when(repository.finish(eq(id), eq(Status.SENT), isNull(), any(Instant.class))).thenReturn(1);
+
+		assertThat(processor.process(id)).isEqualTo(ProcessingResult.SENT);
+		verify(repository, times(3)).recordAttempt(id);
+		verify(sender, times(3)).send(content);
+	}
+
+	@Test
+	void stopsAfterThreeTransientFailures() {
+		prepareClaim();
+		doThrow(new NotificationDeliveryException("Temporary error.", true)).when(sender).send(content);
+		when(repository.finish(id, Status.FAILED, "Temporary error.", null)).thenReturn(1);
+
+		assertThat(processor.process(id)).isEqualTo(ProcessingResult.FAILED);
+		verify(repository, times(3)).recordAttempt(id);
+		verify(sender, times(3)).send(content);
+	}
+
+	@Test
+	void skipsRetryWhenTheProviderDelayExceedsTheBudget() {
+		prepareClaim();
+		doThrow(new NotificationDeliveryException("Rate limit reached.", true, Duration.ofSeconds(5)))
+				.when(sender).send(content);
+		when(repository.finish(id, Status.FAILED, "Rate limit reached.", null)).thenReturn(1);
+
+		assertThat(processor.process(id)).isEqualTo(ProcessingResult.FAILED);
+		verify(repository).recordAttempt(id);
+		verify(sender).send(content);
 	}
 
 	@Test
