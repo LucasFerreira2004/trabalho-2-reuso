@@ -1,5 +1,6 @@
 package com.reusable.notificator.service.notification;
 
+import java.net.ConnectException;
 import java.nio.charset.StandardCharsets;
 import java.util.Properties;
 
@@ -49,6 +50,9 @@ class EmailNotificationListenerTests {
 
 	@Autowired
 	private RabbitListenerEndpointRegistry listenerRegistry;
+
+	@Autowired
+	private EmailNotificationSender sender;
 
 	@MockitoBean
 	private JavaMailSender mailSender;
@@ -112,6 +116,30 @@ class EmailNotificationListenerTests {
 		var container = (AbstractMessageListenerContainer)
 				listenerRegistry.getListenerContainer("emailNotificationListener");
 		return (ChannelAwareMessageListener) container.getMessageListener();
+	}
+
+	@Test
+	void emailStrategyReusesThePlainTextSender() throws Exception {
+		MimeMessage email = prepareEmail();
+		sender.send(new NotificationContent("reader@example.com", "Reminder", "Test body"));
+		assertThat(sender.channel()).isEqualTo(Channel.EMAIL);
+		verify(mailSender).send(email);
+		assertThat(email.getRecipients(RecipientType.TO)).extracting(Object::toString)
+				.containsExactly("reader@example.com");
+		assertThat(email.getContent()).isEqualTo("Test body");
+	}
+
+	@Test
+	void emailStrategyClassifiesConnectionFailuresWithoutExposingThem() throws Exception {
+		MimeMessage email = prepareEmail();
+		doThrow(new MailSendException("Internal host", new ConnectException("Internal address")))
+				.when(mailSender).send(email);
+
+		assertThatThrownBy(() -> sender.send(new NotificationContent("reader@example.com", "Reminder", "Test body")))
+				.isInstanceOfSatisfying(NotificationDeliveryException.class, failure -> {
+					assertThat(failure.isRetryable()).isTrue();
+					assertThat(failure.getMessage()).isEqualTo("SMTP is temporarily unavailable.");
+				});
 	}
 
 	private MimeMessage prepareEmail() {

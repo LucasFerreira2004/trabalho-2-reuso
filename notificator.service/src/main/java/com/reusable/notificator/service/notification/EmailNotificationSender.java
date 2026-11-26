@@ -1,18 +1,26 @@
 package com.reusable.notificator.service.notification;
 
+import java.net.SocketException;
+import java.net.SocketTimeoutException;
+import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.List;
 
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
+import org.eclipse.angus.mail.smtp.SMTPAddressFailedException;
+import org.eclipse.angus.mail.smtp.SMTPSendFailedException;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.mail.MailException;
+import org.springframework.mail.MailSendException;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 @Service
-class EmailNotificationSender {
+class EmailNotificationSender implements NotificationSender {
 
 	private final JavaMailSender mailSender;
 	private final String from;
@@ -20,6 +28,26 @@ class EmailNotificationSender {
 	EmailNotificationSender(JavaMailSender mailSender, @Value("${notification.from}") String from) {
 		this.mailSender = mailSender;
 		this.from = from;
+	}
+
+	@Override
+	public Channel channel() {
+		return Channel.EMAIL;
+	}
+
+	@Override
+	public void send(NotificationContent content) {
+		try {
+			send(new EmailNotificationRequest(List.of(content.recipient()), content.subject(), content.message(),
+					null, null));
+		} catch (MailSendException failure) {
+			boolean retryable = isTemporarySmtpFailure(failure)
+					|| Arrays.stream(failure.getMessageExceptions()).anyMatch(this::isTemporarySmtpFailure);
+			throw new NotificationDeliveryException(retryable
+					? "SMTP is temporarily unavailable." : "SMTP rejected the email.", retryable);
+		} catch (MailException | IllegalArgumentException failure) {
+			throw new NotificationDeliveryException("SMTP could not send the email.", false);
+		}
 	}
 
 	void send(EmailNotificationRequest request) {
@@ -49,6 +77,22 @@ class EmailNotificationSender {
 		}
 
 		mailSender.send(message);
+	}
+
+	private boolean isTemporarySmtpFailure(Throwable failure) {
+		for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+			if (cause instanceof SMTPAddressFailedException smtp) {
+				return smtp.getReturnCode() >= 400 && smtp.getReturnCode() < 500;
+			}
+			if (cause instanceof SMTPSendFailedException smtp) {
+				return smtp.getReturnCode() >= 400 && smtp.getReturnCode() < 500;
+			}
+			if (cause instanceof SocketException || cause instanceof SocketTimeoutException
+					|| cause instanceof UnknownHostException) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private String[] recipientAddresses(List<String> recipients) {
