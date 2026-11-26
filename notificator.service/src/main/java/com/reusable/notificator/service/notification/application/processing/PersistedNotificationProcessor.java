@@ -1,0 +1,79 @@
+package com.reusable.notificator.service.notification.application.processing;
+
+import java.time.Instant;
+import java.util.UUID;
+
+import com.reusable.notificator.service.notification.application.channel.NotificationDeliveryException;
+import com.reusable.notificator.service.notification.application.channel.NotificationSender;
+import com.reusable.notificator.service.notification.application.channel.NotificationSenderRegistry;
+import com.reusable.notificator.service.notification.infrastructure.persistence.Notification;
+import com.reusable.notificator.service.notification.infrastructure.persistence.NotificationRepository;
+import com.reusable.notificator.service.notification.model.NotificationContent;
+import com.reusable.notificator.service.notification.model.Status;
+import io.github.resilience4j.retry.Retry;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+class PersistedNotificationProcessor implements NotificationProcessor {
+
+	private final NotificationRepository repository;
+	private final NotificationSenderRegistry registry;
+	private final Retry retry;
+
+	PersistedNotificationProcessor(NotificationRepository repository, NotificationSenderRegistry registry, Retry retry) {
+		this.repository = repository;
+		this.registry = registry;
+		this.retry = retry;
+	}
+
+	@Override
+	@Transactional(propagation = Propagation.NOT_SUPPORTED)
+	public ProcessingResult process(UUID id) {
+		try {
+			if (repository.claim(id) == 0) {
+				return repository.findById(id).map(this::priorResult).orElse(ProcessingResult.NOT_FOUND);
+			}
+			var notification = repository.findById(id).orElseThrow();
+			var sender = registry.find(notification.getChannel());
+			if (sender.isEmpty() || !sender.get().isAvailable()) {
+				return fail(id, "No sender is available for this channel.");
+			}
+			try {
+				var content = notification.getContent();
+				retry.executeRunnable(() -> deliver(id, sender.get(), content));
+			} catch (NotificationDeliveryException failure) {
+				return fail(id, failure.getMessage());
+			}
+			requireUpdated(repository.finish(id, Status.SENT, null, Instant.now()));
+			return ProcessingResult.SENT;
+		} catch (RuntimeException failure) {
+			throw new NotificationProcessingException("Could not process notification " + id + ".", failure);
+		}
+	}
+
+	private ProcessingResult priorResult(Notification notification) {
+		return switch (notification.getStatus()) {
+			case PROCESSING -> ProcessingResult.ALREADY_PROCESSING;
+			case SENT, FAILED -> ProcessingResult.ALREADY_FINALIZED;
+			case PENDING -> throw new IllegalStateException("Processing claim did not persist.");
+		};
+	}
+
+	private void deliver(UUID id, NotificationSender sender, NotificationContent content) {
+		requireUpdated(repository.recordAttempt(id));
+		sender.send(content);
+	}
+
+	private ProcessingResult fail(UUID id, String errorMessage) {
+		requireUpdated(repository.finish(id, Status.FAILED, errorMessage, null));
+		return ProcessingResult.FAILED;
+	}
+
+	private void requireUpdated(int updated) {
+		if (updated != 1) {
+			throw new IllegalStateException("Processing claim was lost.");
+		}
+	}
+}
