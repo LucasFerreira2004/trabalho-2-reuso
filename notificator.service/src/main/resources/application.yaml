@@ -1,6 +1,23 @@
+server:
+  address: 127.0.0.1
+
 spring:
   application:
     name: notificator.service
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:127.0.0.1}:${POSTGRES_PORT:5432}/${POSTGRES_DB:notifications}
+    username: ${POSTGRES_USER:notifications}
+    password: ${POSTGRES_PASSWORD:}
+  flyway:
+    locations: classpath:db/migration
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  jackson:
+    datatype:
+      enum:
+        fail-on-numbers-for-enums: true
   rabbitmq:
     listener:
       simple:
@@ -21,3 +38,7 @@ spring:
 notification:
   queue: ${NOTIFICATION_QUEUE:notifications.email}
   from: ${NOTIFICATION_FROM:notifications@example.com}
+  telegram:
+    bot-token: ${TELEGRAM_BOT_TOKEN:}
+    api-url: ${TELEGRAM_API_URL:https://api.telegram.org}
+    timeout-ms: ${TELEGRAM_TIMEOUT_MS:5000}

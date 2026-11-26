@@ -1,5 +1,6 @@
-package com.reusable.notificator.service;
+package com.reusable.notificator.service.notification;
 
+import java.net.ConnectException;
 import java.nio.charset.StandardCharsets;
 import java.util.Properties;
 
@@ -17,7 +18,11 @@ import org.springframework.amqp.rabbit.listener.AbstractMessageListenerContainer
 import org.springframework.amqp.rabbit.listener.RabbitListenerEndpointRegistry;
 import org.springframework.amqp.rabbit.listener.api.ChannelAwareMessageListener;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
+import org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Import;
 import org.springframework.mail.MailSendException;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -30,14 +35,24 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-@SpringBootTest(properties = {
+@SpringBootTest(classes = EmailNotificationListenerTests.MailTestConfiguration.class,
+		webEnvironment = SpringBootTest.WebEnvironment.NONE, properties = {
 		"spring.rabbitmq.listener.simple.auto-startup=false",
 		"notification.from=notifications@example.com"
 })
-class ApplicationTests {
+class EmailNotificationListenerTests {
+
+	@Configuration(proxyBeanMethods = false)
+	@EnableAutoConfiguration(exclude = DataSourceAutoConfiguration.class)
+	@Import({EmailNotificationListener.class, EmailNotificationSender.class, NotificationQueueConfiguration.class})
+	static class MailTestConfiguration {
+	}
 
 	@Autowired
 	private RabbitListenerEndpointRegistry listenerRegistry;
+
+	@Autowired
+	private EmailNotificationSender sender;
 
 	@MockitoBean
 	private JavaMailSender mailSender;
@@ -101,6 +116,30 @@ class ApplicationTests {
 		var container = (AbstractMessageListenerContainer)
 				listenerRegistry.getListenerContainer("emailNotificationListener");
 		return (ChannelAwareMessageListener) container.getMessageListener();
+	}
+
+	@Test
+	void emailStrategyReusesThePlainTextSender() throws Exception {
+		MimeMessage email = prepareEmail();
+		sender.send(new NotificationContent("reader@example.com", "Reminder", "Test body"));
+		assertThat(sender.channel()).isEqualTo(Channel.EMAIL);
+		verify(mailSender).send(email);
+		assertThat(email.getRecipients(RecipientType.TO)).extracting(Object::toString)
+				.containsExactly("reader@example.com");
+		assertThat(email.getContent()).isEqualTo("Test body");
+	}
+
+	@Test
+	void emailStrategyClassifiesConnectionFailuresWithoutExposingThem() throws Exception {
+		MimeMessage email = prepareEmail();
+		doThrow(new MailSendException("Internal host", new ConnectException("Internal address")))
+				.when(mailSender).send(email);
+
+		assertThatThrownBy(() -> sender.send(new NotificationContent("reader@example.com", "Reminder", "Test body")))
+				.isInstanceOfSatisfying(NotificationDeliveryException.class, failure -> {
+					assertThat(failure.isRetryable()).isTrue();
+					assertThat(failure.getMessage()).isEqualTo("SMTP is temporarily unavailable.");
+				});
 	}
 
 	private MimeMessage prepareEmail() {

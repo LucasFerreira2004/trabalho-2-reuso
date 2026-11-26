@@ -233,11 +233,21 @@ Kauan publica um primeiro commit ou PR com as assinaturas e o resultado do proce
 
 | Contrato | Kauan | Lucas |
 |---|---|---|
-| `NotificationPublisher.publish(UUID id)` | Persiste e confirma a transação antes de publicar. Trata falha conhecida de aceitação com FAILED e HTTP 503. | Publica JSON com o campo `notificationId` em formato UUID. Verifica a confirmação do broker e o roteamento e sinaliza falha ao chamador. |
-| `NotificationProcessor.process(UUID id)` | Busca a notificação, assume o processamento, executa o sender e persiste o resultado. Distingue sucesso, estado final já registrado, falha definitiva e erro de infraestrutura. | Adapta o listener para chamar o processador. Confirma sucesso e estado final já registrado. Rejeita falhas definitivas para a DLQ e trata erros de infraestrutura sem requeue infinito. |
-| `NotificationSender` | Adapta o sender SMTP e implementa o sender Telegram. O processador seleciona a estratégia e controla o Retry. | Valida a integração através do processador e da fila. |
+| `NotificationPublisher.publish(UUID id)` | Persiste e confirma a transação antes de publicar. Trata `NotificationPublicationException` com FAILED e HTTP 503. | Usa `NotificationMessage` para publicar JSON com o campo `notificationId` em formato UUID. Retorna após confirmação e roteamento. Lança a exceção do contrato em falhas conhecidas. |
+| `NotificationProcessor.process(UUID id)` | Busca a notificação, assume o processamento, executa o sender e persiste o estado. Retorna `ProcessingResult` ou lança `NotificationProcessingException` em falha de infraestrutura. | Adapta o listener para chamar o processador e usa o resultado para decidir ACK ou rejeição. |
+| `NotificationSender` | Adapta o sender SMTP e implementa o sender Telegram. Cada sender declara seu `Channel` e recebe um `NotificationContent` com destinatário, assunto e mensagem. | Valida a integração através do processador e da fila. |
 
-Ao fechar a etapa 03, combinar o comportamento para ID inexistente e entrega repetida durante PROCESSING. A recuperação de PROCESSING após interrupção fica documentada como limitação. Kauan valida API e processador com publisher mockado e PostgreSQL. Lucas valida o listener com processador mockado e verifica ACK e DLQ com o broker real.
+Uma confirmação de publicação inconclusiva deixa a aceitação incerta. A exceção de publicação acima representa uma falha conhecida.
+
+| Resultado do processador | Ação do listener |
+|---|---|
+| `SENT`, `ALREADY_FINALIZED` | Confirmar a entrega. |
+| `FAILED` | Rejeitar sem requeue e encaminhar à DLQ. |
+| `ALREADY_PROCESSING` | Proposta para alinhar com Lucas. Confirmar a entrega repetida sem assumir o processamento. |
+| `NOT_FOUND` | Proposta para alinhar com Lucas. Rejeitar sem requeue e encaminhar à DLQ para inspeção. |
+| `NotificationProcessingException` | Alinhar com Lucas a política de infraestrutura. A proposta inicial é encaminhar à DLQ sem requeue. |
+
+A recuperação de PROCESSING após interrupção fica documentada como limitação. Kauan valida API e processador com publisher mockado e PostgreSQL. Lucas valida o listener com processador mockado e verifica ACK e DLQ com o broker real.
 
 ```mermaid
 flowchart TD
@@ -275,7 +285,8 @@ As dependências indicam pré-requisitos. As duas frentes podem avançar em para
 
 ### Etapa 03 — Definir contratos compartilhados
 
-- [ ] Definir contratos compartilhados
+- [x] Definir e compilar os contratos compartilhados
+- [ ] Alinhar com Lucas as decisões em aberto de ACK e DLQ
 
 **Responsável:** Kauan  
 **Dependências:** 02  
@@ -286,7 +297,9 @@ As dependências indicam pré-requisitos. As duas frentes podem avançar em para
 
 ### Etapa 04 — Configurar banco
 
-- [ ] Configurar banco
+- [x] Configurar banco
+
+Verificado com PostgreSQL 17 pelo Compose. O Spring Boot conectou com o listener RabbitMQ desativado, o Flyway criou `flyway_schema_history` e os seis testes existentes passaram pelo Maven Wrapper.
 
 **Responsável:** Kauan  
 **Dependências:** 02  
@@ -297,7 +310,7 @@ As dependências indicam pré-requisitos. As duas frentes podem avançar em para
 
 ### Etapa 05 — Modelar persistência
 
-- [ ] Modelar persistência
+- [x] Modelar persistência
 
 **Responsável:** Kauan  
 **Dependências:** 03, 04  
@@ -308,7 +321,7 @@ As dependências indicam pré-requisitos. As duas frentes podem avançar em para
 
 ### Etapa 06 — Implementar solicitação
 
-- [ ] Implementar solicitação
+- [x] Implementar solicitação
 
 **Responsável:** Kauan  
 **Dependências:** 05  
@@ -319,7 +332,7 @@ As dependências indicam pré-requisitos. As duas frentes podem avançar em para
 
 ### Etapa 07 — Expor API
 
-- [ ] Expor API
+- [x] Expor API
 
 **Responsável:** Kauan  
 **Dependências:** 06  
@@ -330,7 +343,7 @@ As dependências indicam pré-requisitos. As duas frentes podem avançar em para
 
 ### Etapa 08 — Selecionar estratégias
 
-- [ ] Selecionar estratégias
+- [x] Selecionar estratégias
 
 **Responsável:** Kauan  
 **Dependências:** 03, 05  
@@ -341,7 +354,7 @@ As dependências indicam pré-requisitos. As duas frentes podem avançar em para
 
 ### Etapa 09 — Implementar processador
 
-- [ ] Implementar processador
+- [x] Implementar processador
 
 **Responsável:** Kauan  
 **Dependências:** 08  
@@ -353,7 +366,7 @@ As dependências indicam pré-requisitos. As duas frentes podem avançar em para
 ### Etapa 10 — Adaptar o sender de e-mail
 
 - [x] Implementar o sender SMTP e os testes do fluxo original (Lucas, `7c83d0d`)
-- [ ] Integrar o sender ao núcleo e verificar SMTP (Kauan)
+- [x] Integrar o sender ao núcleo e verificar SMTP (Kauan)
 
 **Responsável:** Kauan  
 **Dependências:** 08  
@@ -364,18 +377,20 @@ As dependências indicam pré-requisitos. As duas frentes podem avançar em para
 
 ### Etapa 11 — Implementar Telegram
 
-- [ ] Implementar Telegram
+- [x] Implementar Telegram e validar com respostas HTTP simuladas
+- [ ] Configurar bot e confirmar recebimento em um chat real
 
 **Responsável:** Kauan  
 **Dependências:** 08  
-**Implementação:** Preparar o bot e o chat de teste no início do dia. Integrar a Bot API via RestClient, com token e timeout configurados pelo ambiente.  
+**Implementação:** Integrar a Bot API via RestClient, com token e timeout configurados pelo ambiente. Configurar o bot e o chat quando estiverem disponíveis para o teste real.
+
 **Critério de conclusão:** O processador seleciona TELEGRAM e a mensagem chega ao chat de teste.  
 **Contribuição:** Segundo Adapter e demonstração de variabilidade.  
 **Commit sugerido:** `feat: integrate telegram sender`
 
 ### Etapa 12 — Adicionar Retry
 
-- [ ] Adicionar Retry
+- [x] Adicionar Retry
 
 **Responsável:** Kauan  
 **Dependências:** 09, 10, 11  
@@ -386,7 +401,10 @@ As dependências indicam pré-requisitos. As duas frentes podem avançar em para
 
 ### Etapa 13 — Entregar núcleo a Lucas
 
-- [ ] Entregar núcleo a Lucas
+- [x] Preparar a entrega do núcleo e o roteiro de verificação
+- [ ] Registrar a evidência de recebimento no Telegram real (etapa 11)
+
+Os 30 testes passaram com PostgreSQL real. O [roteiro de verificação](../notificator.service/README.md#verify-the-core-api-and-email) usou o perfil local `core-demo` e confirmou EMAIL em SENT com uma tentativa no Mailpit. Com o Telegram simulado, uma falha transitória terminou em SENT após três tentativas e uma rejeição definitiva terminou em FAILED após uma tentativa. O RabbitMQ entra na integração da etapa 17.
 
 **Responsável:** Kauan  
 **Dependências:** 07, 09, 10, 11, 12  
