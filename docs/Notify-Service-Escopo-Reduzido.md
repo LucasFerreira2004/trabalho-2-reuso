@@ -297,7 +297,9 @@ As dependências indicam pré-requisitos. As duas frentes podem avançar em para
 
 ### Etapa 04 — Configurar banco
 
-- [ ] Configurar banco
+- [x] Configurar banco
+
+Verificado com PostgreSQL 17 pelo Compose. O Spring Boot conectou com o listener RabbitMQ desativado, o Flyway criou `flyway_schema_history` e os seis testes existentes passaram pelo Maven Wrapper.
 
 **Responsável:** Kauan  
 **Dependências:** 02  

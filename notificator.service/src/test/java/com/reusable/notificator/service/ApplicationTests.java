@@ -31,6 +31,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @SpringBootTest(properties = {
+		"spring.autoconfigure.exclude=org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration",
 		"spring.rabbitmq.listener.simple.auto-startup=false",
 		"notification.from=notifications@example.com"
 })

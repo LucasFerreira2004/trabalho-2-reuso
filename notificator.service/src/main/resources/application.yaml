@@ -1,6 +1,15 @@
 spring:
   application:
     name: notificator.service
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:127.0.0.1}:${POSTGRES_PORT:5432}/${POSTGRES_DB:notifications}
+    username: ${POSTGRES_USER:notifications}
+    password: ${POSTGRES_PASSWORD:}
+  flyway:
+    locations: classpath:db/migration
+  jpa:
+    hibernate:
+      ddl-auto: validate
   rabbitmq:
     listener:
       simple:

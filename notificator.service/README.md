@@ -25,7 +25,30 @@ The service declares the durable input queue and a durable dead-letter queue wit
 
 ## Run locally
 
-Start [RabbitMQ](https://www.rabbitmq.com/docs/download) and [Mailpit](https://mailpit.axllent.org/docs/install/docker/) with Docker, then run the service with Java 21.
+### Start PostgreSQL
+
+From the repository root, create or edit `.env`, start PostgreSQL, and export the same settings for Spring Boot.
+
+```bash
+test -f .env || cp .env.example .env
+docker compose up -d --wait postgres
+set -a
+. ./.env
+set +a
+cd notificator.service
+```
+
+To check the database and Flyway independently, start the application with the RabbitMQ listener disabled.
+
+```bash
+./mvnw spring-boot:run -Dspring-boot.run.arguments=--spring.rabbitmq.listener.simple.auto-startup=false
+```
+
+Check the startup log for a PostgreSQL connection, Flyway initialization, and `Started Application`. The process may exit after startup with the listener disabled. Flyway creates its history table and reports zero migrations until the first SQL migration is added in `src/main/resources/db/migration`. Hibernate validates the schema that Flyway manages.
+
+### Try SMTP delivery
+
+With PostgreSQL running and the environment loaded in the current terminal, start [RabbitMQ](https://www.rabbitmq.com/docs/download) and [Mailpit](https://mailpit.axllent.org/docs/install/docker/) with Docker, then run the service with Java 21.
 
 ```bash
 docker run -d --rm --name notification-rabbitmq \
@@ -48,6 +71,11 @@ SPRING_RABBITMQ_USERNAME=demo SPRING_RABBITMQ_PASSWORD=demo ./mvnw spring-boot:r
 
 | Environment variable | Default | Purpose |
 | --- | --- | --- |
+| POSTGRES_HOST | 127.0.0.1 | PostgreSQL host for the application |
+| POSTGRES_PORT | 5432 | PostgreSQL port on the host |
+| POSTGRES_DB | notifications | Database name |
+| POSTGRES_USER | notifications | Database user |
+| POSTGRES_PASSWORD | Set in `.env` | Database password |
 | SPRING_RABBITMQ_HOST | localhost | RabbitMQ host |
 | SPRING_RABBITMQ_PORT | 5672 | RabbitMQ AMQP port |
 | SPRING_RABBITMQ_USERNAME | guest | RabbitMQ username |
