@@ -233,11 +233,21 @@ Kauan publica um primeiro commit ou PR com as assinaturas e o resultado do proce
 
 | Contrato | Kauan | Lucas |
 |---|---|---|
-| `NotificationPublisher.publish(UUID id)` | Persiste e confirma a transação antes de publicar. Trata falha conhecida de aceitação com FAILED e HTTP 503. | Publica JSON com o campo `notificationId` em formato UUID. Verifica a confirmação do broker e o roteamento e sinaliza falha ao chamador. |
-| `NotificationProcessor.process(UUID id)` | Busca a notificação, assume o processamento, executa o sender e persiste o resultado. Distingue sucesso, estado final já registrado, falha definitiva e erro de infraestrutura. | Adapta o listener para chamar o processador. Confirma sucesso e estado final já registrado. Rejeita falhas definitivas para a DLQ e trata erros de infraestrutura sem requeue infinito. |
-| `NotificationSender` | Adapta o sender SMTP e implementa o sender Telegram. O processador seleciona a estratégia e controla o Retry. | Valida a integração através do processador e da fila. |
+| `NotificationPublisher.publish(UUID id)` | Persiste e confirma a transação antes de publicar. Trata `NotificationPublicationException` com FAILED e HTTP 503. | Usa `NotificationMessage` para publicar JSON com o campo `notificationId` em formato UUID. Retorna após confirmação e roteamento. Lança a exceção do contrato em falhas conhecidas. |
+| `NotificationProcessor.process(UUID id)` | Busca a notificação, assume o processamento, executa o sender e persiste o estado. Retorna `ProcessingResult` ou lança `NotificationProcessingException` em falha de infraestrutura. | Adapta o listener para chamar o processador e usa o resultado para decidir ACK ou rejeição. |
+| `NotificationSender` | Adapta o sender SMTP e implementa o sender Telegram. Cada sender declara seu `Channel` e recebe um `NotificationContent` com destinatário, assunto e mensagem. | Valida a integração através do processador e da fila. |
 
-Ao fechar a etapa 03, combinar o comportamento para ID inexistente e entrega repetida durante PROCESSING. A recuperação de PROCESSING após interrupção fica documentada como limitação. Kauan valida API e processador com publisher mockado e PostgreSQL. Lucas valida o listener com processador mockado e verifica ACK e DLQ com o broker real.
+Uma confirmação de publicação inconclusiva deixa a aceitação incerta. A exceção de publicação acima representa uma falha conhecida.
+
+| Resultado do processador | Ação do listener |
+|---|---|
+| `SENT`, `ALREADY_FINALIZED` | Confirmar a entrega. |
+| `FAILED` | Rejeitar sem requeue e encaminhar à DLQ. |
+| `ALREADY_PROCESSING` | Proposta para alinhar com Lucas. Confirmar a entrega repetida sem assumir o processamento. |
+| `NOT_FOUND` | Proposta para alinhar com Lucas. Rejeitar sem requeue e encaminhar à DLQ para inspeção. |
+| `NotificationProcessingException` | Alinhar com Lucas a política de infraestrutura. A proposta inicial é encaminhar à DLQ sem requeue. |
+
+A recuperação de PROCESSING após interrupção fica documentada como limitação. Kauan valida API e processador com publisher mockado e PostgreSQL. Lucas valida o listener com processador mockado e verifica ACK e DLQ com o broker real.
 
 ```mermaid
 flowchart TD
@@ -275,7 +285,8 @@ As dependências indicam pré-requisitos. As duas frentes podem avançar em para
 
 ### Etapa 03 — Definir contratos compartilhados
 
-- [ ] Definir contratos compartilhados
+- [x] Definir e compilar os contratos compartilhados
+- [ ] Alinhar com Lucas as decisões em aberto de ACK e DLQ
 
 **Responsável:** Kauan  
 **Dependências:** 02  
